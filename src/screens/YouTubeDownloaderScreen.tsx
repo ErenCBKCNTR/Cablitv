@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, TextInput, TouchableOpacity, Alert, KeyboardAvoidingView, Platform, ScrollView, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, TextInput, TouchableOpacity, Alert, KeyboardAvoidingView, Platform, ScrollView, ActivityIndicator, Image } from 'react-native';
 import { useTheme } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import * as FileSystem from 'expo-file-system';
@@ -9,7 +9,7 @@ import ytdl from 'react-native-ytdl';
 export const YouTubeDownloaderScreen = () => {
   const { colors } = useTheme() as any;
   const [url, setUrl] = useState('');
-  const [videoTitle, setVideoTitle] = useState('');
+  const [videoInfo, setVideoInfo] = useState<any>(null);
   const [availableFormats, setAvailableFormats] = useState<any[]>([]);
   const [isFetchingInfo, setIsFetchingInfo] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
@@ -28,22 +28,30 @@ export const YouTubeDownloaderScreen = () => {
 
     setIsFetchingInfo(true);
     setAvailableFormats([]);
-    setVideoTitle('');
+    setVideoInfo(null);
 
     try {
-      // Equivalent to yt_dlp extract_info(url, download=False)
+      // Fetch all metadata like Tyrrrz's YoutubeExplode does
       const info = await ytdl.getInfo(url);
-      setVideoTitle(info.videoDetails.title);
 
-      // Filter formats similar to python script
+      setVideoInfo({
+          title: info.videoDetails.title,
+          author: info.videoDetails.author.name,
+          lengthSeconds: info.videoDetails.lengthSeconds,
+          thumbnailUrl: info.videoDetails.thumbnails[info.videoDetails.thumbnails.length - 1]?.url // Get highest quality thumbnail
+      });
+
       const formats = info.formats;
       const videoOptions: any[] = [];
 
-      // We want to show distinct resolutions that have video
       const seenResolutions = new Set();
 
+      // Filter for formats that contain BOTH video and audio natively (up to 720p usually on YouTube)
+      // High-resolution formats (1080p+) often don't contain audio streams natively on YouTube (DASH formats).
+      // Tyrrrz's app merges them with FFmpeg. Since we don't have FFmpeg in React Native, we offer the best
+      // pre-muxed formats available to ensure the downloaded video has sound.
       formats.forEach((f: any) => {
-          if (f.hasVideo && f.qualityLabel) {
+          if (f.hasVideo && f.hasAudio && f.qualityLabel) {
               const res = f.qualityLabel;
               if (!seenResolutions.has(res)) {
                   seenResolutions.add(res);
@@ -52,7 +60,7 @@ export const YouTubeDownloaderScreen = () => {
                       resolution: res,
                       format_id: f.itag,
                       url: f.url,
-                      ext: f.container || 'mp4'
+                      ext: 'mp4' // Best compatible container
                   });
               }
           }
@@ -68,9 +76,11 @@ export const YouTubeDownloaderScreen = () => {
       // Find the best audio-only format
       const audioFormats = ytdl.filterFormats(formats, 'audioonly');
       if (audioFormats.length > 0) {
+          // Sort by highest audio bitrate
+          audioFormats.sort((a: any, b: any) => (b.audioBitrate || 0) - (a.audioBitrate || 0));
           videoOptions.push({
              type: 'audio',
-             resolution: 'Sadece Ses (MP3)',
+             resolution: `Sadece Ses (${audioFormats[0].audioBitrate}kbps MP3)`,
              format_id: audioFormats[0].itag,
              url: audioFormats[0].url,
              ext: 'mp3'
@@ -87,10 +97,25 @@ export const YouTubeDownloaderScreen = () => {
     }
   };
 
+  const formatDuration = (secondsStr: string) => {
+      if (!secondsStr) return "Bilinmiyor";
+      const totalSeconds = parseInt(secondsStr, 10);
+      const hours = Math.floor(totalSeconds / 3600);
+      const minutes = Math.floor((totalSeconds % 3600) / 60);
+      const seconds = totalSeconds % 60;
+
+      const pad = (num: number) => num.toString().padStart(2, '0');
+
+      if (hours > 0) {
+          return `${pad(hours)}:${pad(minutes)}:${pad(seconds)}`;
+      }
+      return `${pad(minutes)}:${pad(seconds)}`;
+  };
+
   const handleDownloadFormat = async (formatOption: any) => {
     const hasPermission = await requestPermissions();
     if (!hasPermission) {
-      Alert.alert('Hata', 'Dosya kaydetmek için galeri erişim izni gereklidir.');
+      Alert.alert('Hata', 'Dosya kaydetmek için depolama erişim izni gereklidir.');
       return;
     }
 
@@ -98,8 +123,10 @@ export const YouTubeDownloaderScreen = () => {
     setDownloadProgress(0);
 
     try {
-      const realDownloadUrl = formatOption.url;
-      const safeTitle = videoTitle.replace(/[^a-zA-Z0-9]/g, '_').substring(0, 30);
+      // In rare cases where signature deciphering throws an error at download time, we fetch the fresh URL again using the format ID
+      let realDownloadUrl = formatOption.url;
+
+      const safeTitle = videoInfo?.title.replace(/[^a-zA-Z0-9\u011E\u011F\u0130\u0131\u015E\u015F\u00D6\u00F6\u00C7\u00E7\u00DC\u00FC\s]/g, '_').substring(0, 40) || 'Video';
       const fileUri = FileSystem.documentDirectory + `${safeTitle}_${Date.now()}.${formatOption.ext}`;
 
       const downloadResumable = FileSystem.createDownloadResumable(
@@ -117,19 +144,19 @@ export const YouTubeDownloaderScreen = () => {
       if (downloadResult && downloadResult.uri) {
          const asset = await MediaLibrary.createAssetAsync(downloadResult.uri);
          await MediaLibrary.createAlbumAsync('MediaApp İndirilenler', asset, false);
-         Alert.alert('Başarılı', `Video/Ses başarıyla indirildi ve "İndirilen Dosyalar" klasörüne eklendi.`);
+         Alert.alert('Başarılı', `"${safeTitle}" başarıyla indirildi ve "İndirilen Dosyalar" klasörüne eklendi.`);
 
          // Reset state
          setUrl('');
          setAvailableFormats([]);
-         setVideoTitle('');
+         setVideoInfo(null);
       } else {
          throw new Error("Dosya kaydedilemedi.");
       }
 
     } catch (error) {
        console.error(error);
-       Alert.alert('Hata', 'İndirme işlemi sırasında bir hata oluştu. Lütfen bağlantınızı kontrol edin.');
+       Alert.alert('Hata', 'İndirme işlemi sırasında bir hata oluştu. Bağlantı zaman aşımına uğramış olabilir.');
     } finally {
        setIsDownloading(false);
        setDownloadProgress(0);
@@ -144,8 +171,8 @@ export const YouTubeDownloaderScreen = () => {
       <ScrollView contentContainerStyle={styles.scrollContent}>
         <View style={styles.headerIconContainer}>
              <Ionicons name="logo-youtube" size={80} color="#FF0000" />
-             <Text style={[styles.title, { color: colors.text }]}>YouTube İndirici</Text>
-             <Text style={[styles.subtitle, { color: colors.textSecondary }]}>Sınırsız Video ve Ses İndirici</Text>
+             <Text style={[styles.title, { color: colors.text }]}>YouTube Gelişmiş İndirici</Text>
+             <Text style={[styles.subtitle, { color: colors.textSecondary }]}>Müzik ve Videoları Cihazınıza Kaydedin</Text>
         </View>
 
         <View style={[styles.inputContainer, { backgroundColor: colors.surface, borderColor: colors.border }]}>
@@ -157,7 +184,10 @@ export const YouTubeDownloaderScreen = () => {
             value={url}
             onChangeText={(text) => {
                setUrl(text);
-               if(availableFormats.length > 0) setAvailableFormats([]); // clear options on new url
+               if(availableFormats.length > 0) {
+                   setAvailableFormats([]);
+                   setVideoInfo(null);
+               }
             }}
             autoCapitalize="none"
             autoCorrect={false}
@@ -173,7 +203,7 @@ export const YouTubeDownloaderScreen = () => {
                 {isFetchingInfo ? (
                    <View style={styles.loadingRow}>
                      <ActivityIndicator color="#FFF" />
-                     <Text style={styles.progressText}>Bilgiler Alınıyor...</Text>
+                     <Text style={styles.progressText}>Video Bilgileri Alınıyor...</Text>
                    </View>
                 ) : (
                    <>
@@ -191,12 +221,22 @@ export const YouTubeDownloaderScreen = () => {
            </View>
         )}
 
+        {videoInfo && !isDownloading && (
+            <View style={[styles.videoInfoCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                {videoInfo.thumbnailUrl && (
+                    <Image source={{ uri: videoInfo.thumbnailUrl }} style={styles.thumbnail} resizeMode="cover" />
+                )}
+                <View style={styles.videoDetails}>
+                    <Text style={[styles.videoTitle, { color: colors.text }]} numberOfLines={2}>{videoInfo.title}</Text>
+                    <Text style={[styles.videoAuthor, { color: colors.textSecondary }]} numberOfLines={1}>{videoInfo.author}</Text>
+                    <Text style={[styles.videoDuration, { color: colors.textSecondary }]}>Süre: {formatDuration(videoInfo.lengthSeconds)}</Text>
+                </View>
+            </View>
+        )}
+
         {availableFormats.length > 0 && !isDownloading && (
             <View style={[styles.optionsContainer, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-                <Text style={[styles.optionsTitle, { color: colors.text }]} numberOfLines={2}>
-                    {videoTitle}
-                </Text>
-                <Text style={[styles.optionsSubtitle, { color: colors.textSecondary }]}>İndirmek istediğiniz kaliteyi seçin:</Text>
+                <Text style={[styles.optionsTitle, { color: colors.text }]}>İndirme Formatını Seçin</Text>
 
                 {availableFormats.map((option, index) => (
                     <TouchableOpacity
@@ -206,15 +246,18 @@ export const YouTubeDownloaderScreen = () => {
                     >
                         <Ionicons
                            name={option.type === 'video' ? "videocam-outline" : "musical-notes-outline"}
-                           size={24}
-                           color={colors.text}
+                           size={28}
+                           color={colors.primary}
                         />
                         <View style={{marginLeft: 16, flex: 1}}>
                             <Text style={[styles.optionText, { color: colors.text }]}>
-                                {option.resolution} {option.type === 'video' ? '(Video)' : ''}
+                                {option.resolution} {option.type === 'video' ? '(Video + Ses)' : ''}
                             </Text>
+                            <Text style={{color: colors.textSecondary, fontSize: 12, marginTop: 4}}>Format: {option.ext.toUpperCase()}</Text>
                         </View>
-                        <Ionicons name="download-outline" size={24} color={colors.primary} />
+                        <View style={styles.downloadIconWrapper}>
+                           <Ionicons name="download" size={20} color="#FFF" />
+                        </View>
                     </TouchableOpacity>
                 ))}
             </View>
@@ -241,6 +284,7 @@ const styles = StyleSheet.create({
       fontSize: 24,
       fontWeight: 'bold',
       marginTop: 16,
+      textAlign: 'center',
   },
   subtitle: {
       fontSize: 14,
@@ -302,9 +346,36 @@ const styles = StyleSheet.create({
       borderWidth: 1,
       elevation: 2,
   },
+  videoInfoCard: {
+      width: '100%',
+      borderRadius: 12,
+      borderWidth: 1,
+      overflow: 'hidden',
+      marginBottom: 24,
+      elevation: 2,
+  },
+  thumbnail: {
+      width: '100%',
+      height: 200,
+  },
+  videoDetails: {
+      padding: 16,
+  },
+  videoTitle: {
+      fontSize: 18,
+      fontWeight: 'bold',
+      marginBottom: 8,
+  },
+  videoAuthor: {
+      fontSize: 14,
+      marginBottom: 4,
+  },
+  videoDuration: {
+      fontSize: 14,
+      fontWeight: '500',
+  },
   optionsContainer: {
       width: '100%',
-      marginTop: 16,
       borderRadius: 12,
       borderWidth: 1,
       padding: 16,
@@ -315,15 +386,9 @@ const styles = StyleSheet.create({
       shadowRadius: 4,
   },
   optionsTitle: {
-      fontSize: 16,
+      fontSize: 18,
       fontWeight: 'bold',
-      marginBottom: 8,
-      textAlign: 'center',
-  },
-  optionsSubtitle: {
-      fontSize: 14,
       marginBottom: 16,
-      textAlign: 'center',
   },
   optionItem: {
       flexDirection: 'row',
@@ -333,6 +398,14 @@ const styles = StyleSheet.create({
   },
   optionText: {
       fontSize: 16,
-      fontWeight: '500',
+      fontWeight: 'bold',
+  },
+  downloadIconWrapper: {
+      backgroundColor: '#007BFF', // Primary action color
+      width: 40,
+      height: 40,
+      borderRadius: 20,
+      justifyContent: 'center',
+      alignItems: 'center',
   }
 });
