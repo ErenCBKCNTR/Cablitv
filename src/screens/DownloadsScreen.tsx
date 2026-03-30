@@ -1,14 +1,17 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, Alert, Image } from 'react-native';
-import { useTheme } from '@react-navigation/native';
+import { View, StyleSheet, FlatList, TouchableOpacity, Alert, Text } from 'react-native';
+import { useTheme, useNavigation } from '@react-navigation/native';
 import * as MediaLibrary from 'expo-media-library';
 import * as Sharing from 'expo-sharing';
 import { Ionicons } from '@expo/vector-icons';
+import { WebView } from 'react-native-webview';
 
 export const DownloadsScreen = () => {
   const { colors } = useTheme() as any;
+  const navigation = useNavigation() as any;
   const [assets, setAssets] = useState<MediaLibrary.Asset[]>([]);
   const [hasPermission, setHasPermission] = useState<boolean | null>(null);
+  const [activeMediaUri, setActiveMediaUri] = useState<string | null>(null);
 
   useEffect(() => {
     (async () => {
@@ -22,9 +25,7 @@ export const DownloadsScreen = () => {
 
   const loadAssets = async () => {
     try {
-      // Find our specific album if it exists
       const album = await MediaLibrary.getAlbumAsync('MediaApp İndirilenler');
-
       if (album) {
         const result = await MediaLibrary.getAssetsAsync({
           album: album,
@@ -50,26 +51,72 @@ export const DownloadsScreen = () => {
   };
 
   const handleDelete = (asset: MediaLibrary.Asset) => {
-    Alert.alert(
-        'Emin misiniz?',
-        'Bu dosyayı silmek istediğinize emin misiniz?',
-        [
-            { text: 'İptal', style: 'cancel' },
-            {
-                text: 'Sil',
-                style: 'destructive',
-                onPress: async () => {
-                    try {
-                        await MediaLibrary.deleteAssetsAsync([asset]);
-                        loadAssets(); // Reload the list
-                    } catch (error) {
-                        console.error('Delete error', error);
-                        Alert.alert('Hata', 'Dosya silinemedi.');
-                    }
+    Alert.alert('Emin misiniz?', 'Bu dosyayı silmek istediğinize emin misiniz?', [
+        { text: 'İptal', style: 'cancel' },
+        {
+            text: 'Sil',
+            style: 'destructive',
+            onPress: async () => {
+                try {
+                    await MediaLibrary.deleteAssetsAsync([asset]);
+                    loadAssets();
+                } catch (error) {
+                    console.error('Delete error', error);
+                    Alert.alert('Hata', 'Dosya silinemedi.');
                 }
             }
-        ]
-    );
+        }
+    ]);
+  };
+
+  // As requested, integrating mediaelement/mediaelement using an embedded webview player.
+  // We use MediaElement.js wrapped in a simple HTML string to play the active media natively.
+  const renderMediaElementPlayer = (uri: string) => {
+      const html = `
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+            <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/mediaelement/4.2.17/mediaelementplayer.min.css">
+            <style>
+                body, html { margin: 0; padding: 0; background: #000; height: 100%; display: flex; justify-content: center; align-items: center; overflow: hidden; }
+                .mejs__container { width: 100% !important; height: 100% !important; }
+            </style>
+        </head>
+        <body>
+            <video id="player" controls preload="auto" style="max-width: 100%;">
+                <source src="${uri}" type="video/mp4">
+            </video>
+            <script src="https://cdnjs.cloudflare.com/ajax/libs/mediaelement/4.2.17/mediaelement-and-player.min.js"></script>
+            <script>
+                document.addEventListener('DOMContentLoaded', function() {
+                    new MediaElementPlayer('player', {
+                        features: ['playpause', 'progress', 'current', 'duration', 'tracks', 'volume', 'fullscreen'],
+                        success: function(media) { media.play(); }
+                    });
+                });
+            </script>
+        </body>
+        </html>
+      `;
+
+      return (
+          <View style={styles.playerContainer}>
+             <View style={styles.playerHeader}>
+                 <Text style={styles.playerTitle} numberOfLines={1}>MediaElement.js Oynatıcı</Text>
+                 <TouchableOpacity onPress={() => setActiveMediaUri(null)}>
+                     <Ionicons name="close-circle" size={32} color="#FFF" />
+                 </TouchableOpacity>
+             </View>
+             <WebView
+                source={{ html }}
+                style={{ flex: 1, backgroundColor: '#000' }}
+                javaScriptEnabled={true}
+                allowsInlineMediaPlayback={true}
+                mediaPlaybackRequiresUserAction={false}
+             />
+          </View>
+      );
   };
 
   if (hasPermission === false) {
@@ -78,6 +125,10 @@ export const DownloadsScreen = () => {
         <Text style={{ color: colors.text }}>Galeri erişim izni verilmedi.</Text>
       </View>
     );
+  }
+
+  if (activeMediaUri) {
+      return renderMediaElementPlayer(activeMediaUri);
   }
 
   return (
@@ -94,21 +145,23 @@ export const DownloadsScreen = () => {
           data={assets}
           keyExtractor={(item) => item.id}
           renderItem={({ item }) => (
-            <View style={[styles.itemContainer, { backgroundColor: colors.surface, borderBottomColor: colors.border }]}>
-                {item.mediaType === 'video' ? (
-                     <Ionicons name="videocam-outline" size={40} color={colors.primary} style={styles.icon} />
-                ) : item.mediaType === 'audio' ? (
-                     <Ionicons name="musical-notes-outline" size={40} color={colors.primary} style={styles.icon} />
-                ) : (
-                     <Image source={{ uri: item.uri }} style={styles.thumbnail} />
-                )}
+            <TouchableOpacity
+                style={[styles.itemContainer, { backgroundColor: colors.surface, borderBottomColor: colors.border }]}
+                onPress={() => setActiveMediaUri(item.uri)}
+            >
+                <Ionicons
+                    name={item.mediaType === 'video' ? "videocam-outline" : "musical-notes-outline"}
+                    size={40}
+                    color={colors.primary}
+                    style={styles.icon}
+                />
 
               <View style={styles.infoContainer}>
                 <Text style={[styles.filename, { color: colors.text }]} numberOfLines={2}>
                   {item.filename}
                 </Text>
                 <Text style={[styles.filesize, { color: colors.textSecondary }]}>
-                  {item.mediaType.toUpperCase()}
+                  {item.mediaType.toUpperCase()} Oynat
                 </Text>
               </View>
 
@@ -120,7 +173,7 @@ export const DownloadsScreen = () => {
                    <Ionicons name="trash-outline" size={24} color={colors.error} />
                 </TouchableOpacity>
               </View>
-            </View>
+            </TouchableOpacity>
           )}
         />
       )}
@@ -157,12 +210,6 @@ const styles = StyleSheet.create({
   icon: {
       marginRight: 16,
   },
-  thumbnail: {
-      width: 40,
-      height: 40,
-      borderRadius: 8,
-      marginRight: 16,
-  },
   infoContainer: {
     flex: 1,
   },
@@ -180,6 +227,23 @@ const styles = StyleSheet.create({
   },
   actionBtn: {
       marginLeft: 16,
-      padding: 4,
+      padding: 8,
+  },
+  playerContainer: {
+      flex: 1,
+      backgroundColor: '#000',
+  },
+  playerHeader: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      padding: 16,
+      paddingTop: Platform.OS === 'ios' ? 48 : 24,
+      backgroundColor: '#222',
+  },
+  playerTitle: {
+      color: '#FFF',
+      fontSize: 18,
+      fontWeight: 'bold',
   }
 });
