@@ -71,7 +71,8 @@ export const LiveTVScreen = () => {
       <FlatList
         data={sortedChannels}
         keyExtractor={(item) => item.id}
-        numColumns={2}
+        numColumns={3}
+        columnWrapperStyle={styles.row}
         renderItem={({ item }) => (
           <ChannelItem
             channel={item}
@@ -120,5 +121,9 @@ const styles = StyleSheet.create({
   listContent: {
     paddingHorizontal: 8,
     paddingBottom: 16,
+  },
+  row: {
+    flex: 1,
+    justifyContent: 'flex-start',
   },
 });

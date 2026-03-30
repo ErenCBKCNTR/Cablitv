@@ -63,17 +63,17 @@ export const ChannelItem: React.FC<ChannelItemProps> = ({
 
 const styles = StyleSheet.create({
   container: {
-    flex: 1,
-    margin: 8,
-    borderRadius: 12,
+    width: '30%', // Makes them smaller, fitting 3 in a row
+    margin: '1.6%', // Tighter margins
+    borderRadius: 8,
     borderWidth: 1,
     overflow: 'hidden',
-    elevation: 3, // Android shadow
-    shadowColor: '#000', // iOS shadow
-    shadowOffset: { width: 0, height: 2 },
+    elevation: 2, // Lighter shadow
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.1,
-    shadowRadius: 4,
-    aspectRatio: 1, // Make it a square
+    shadowRadius: 2,
+    aspectRatio: 1, // Keep it square
   },
   imageContainer: {
     flex: 3,

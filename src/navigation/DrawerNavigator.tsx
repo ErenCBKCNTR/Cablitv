@@ -4,6 +4,7 @@ import { HomeScreen } from '../screens/HomeScreen';
 import { LiveRadioScreen } from '../screens/LiveRadioScreen';
 import { LiveTVScreen } from '../screens/LiveTVScreen';
 import { YouTubeDownloaderScreen } from '../screens/YouTubeDownloaderScreen';
+import { DownloadsScreen } from '../screens/DownloadsScreen';
 import { Ionicons } from '@expo/vector-icons';
 import { TouchableOpacity, StyleSheet } from 'react-native';
 
@@ -72,7 +73,16 @@ export const DrawerNavigator: React.FC<DrawerNavigatorProps> = ({ toggleTheme, i
         component={YouTubeDownloaderScreen}
         options={{
           drawerIcon: ({ color, size }) => (
-            <Ionicons name="download-outline" size={size} color={color} />
+            <Ionicons name="logo-youtube" size={size} color={color} />
+          ),
+        }}
+      />
+      <Drawer.Screen
+        name="İndirilen Dosyalar"
+        component={DownloadsScreen}
+        options={{
+          drawerIcon: ({ color, size }) => (
+            <Ionicons name="folder-outline" size={size} color={color} />
           ),
         }}
       />

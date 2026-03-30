@@ -28,7 +28,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({ channel, onClose, colo
     <View style={[styles.container, { backgroundColor: colors.surface, borderTopColor: colors.border }]}>
       <View style={[styles.header, { backgroundColor: colors.primary }]}>
         <Text style={[styles.headerTitle, { color: '#FFF' }]} numberOfLines={1}>
-          Playing: {channel.name}
+          Oynatılıyor: {channel.name}
         </Text>
         <TouchableOpacity onPress={onClose} style={styles.closeButton}>
           <Ionicons name="close-circle" size={28} color="#FFF" />
@@ -71,16 +71,20 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({ channel, onClose, colo
   );
 };
 
+const { width } = Dimensions.get('window');
+
 const styles = StyleSheet.create({
   container: {
     width: '100%',
-    height: 300, // Fixed height for the inline player
+    // Dynamic height based on standard 16:9 ratio + header height to avoid overflow
+    height: width * (9 / 16) + 50,
     borderTopWidth: 1,
     elevation: 10,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: -2 },
     shadowOpacity: 0.1,
     shadowRadius: 5,
+    paddingBottom: 20, // Add padding at the bottom to ensure controls are visible
   },
   header: {
     flexDirection: 'row',
