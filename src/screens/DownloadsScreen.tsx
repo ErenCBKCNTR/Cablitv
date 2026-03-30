@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { View, StyleSheet, FlatList, TouchableOpacity, Alert, Text } from 'react-native';
+import { View, StyleSheet, FlatList, TouchableOpacity, Alert, Text, Platform } from 'react-native';
 import { useTheme, useNavigation } from '@react-navigation/native';
 import * as MediaLibrary from 'expo-media-library';
 import * as Sharing from 'expo-sharing';
