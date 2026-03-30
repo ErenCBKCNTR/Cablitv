@@ -4,11 +4,14 @@ import { useTheme } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import * as FileSystem from 'expo-file-system';
 import * as MediaLibrary from 'expo-media-library';
+import ytdl from 'react-native-ytdl';
 
 export const YouTubeDownloaderScreen = () => {
   const { colors } = useTheme() as any;
   const [url, setUrl] = useState('');
-  const [showOptions, setShowOptions] = useState(false);
+  const [videoTitle, setVideoTitle] = useState('');
+  const [availableFormats, setAvailableFormats] = useState<any[]>([]);
+  const [isFetchingInfo, setIsFetchingInfo] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
   const [downloadProgress, setDownloadProgress] = useState(0);
 
@@ -17,49 +20,74 @@ export const YouTubeDownloaderScreen = () => {
     return status === 'granted';
   };
 
-  const handleDownload = () => {
+  const fetchVideoInfo = async () => {
     if (!url.trim() || (!url.includes('youtube.com') && !url.includes('youtu.be'))) {
       Alert.alert('Hata', 'Lütfen geçerli bir YouTube linki giriniz.');
       return;
     }
-    setShowOptions(true);
-  };
 
-  const getCobaltUrl = async (isAudio: boolean, quality: string) => {
+    setIsFetchingInfo(true);
+    setAvailableFormats([]);
+    setVideoTitle('');
+
     try {
-      const response = await fetch('https://api.cobalt.tools/api/json', {
-        method: 'POST',
-        headers: {
-          'Accept': 'application/json',
-          'Content-Type': 'application/json',
-          'User-Agent': 'MediaApp/1.0',
-        },
-        body: JSON.stringify({
-          url: url,
-          isAudioOnly: isAudio,
-          vQuality: quality,
-          aFormat: isAudio ? 'mp3' : 'best',
-          filenamePattern: 'nerdy', // Provides cleaner filenames
-        })
+      // Equivalent to yt_dlp extract_info(url, download=False)
+      const info = await ytdl.getInfo(url);
+      setVideoTitle(info.videoDetails.title);
+
+      // Filter formats similar to python script
+      const formats = info.formats;
+      const videoOptions: any[] = [];
+
+      // We want to show distinct resolutions that have video
+      const seenResolutions = new Set();
+
+      formats.forEach((f: any) => {
+          if (f.hasVideo && f.qualityLabel) {
+              const res = f.qualityLabel;
+              if (!seenResolutions.has(res)) {
+                  seenResolutions.add(res);
+                  videoOptions.push({
+                      type: 'video',
+                      resolution: res,
+                      format_id: f.itag,
+                      url: f.url,
+                      ext: f.container || 'mp4'
+                  });
+              }
+          }
       });
 
-      const data = await response.json();
+      // Sort video options by highest resolution
+      videoOptions.sort((a, b) => {
+         const numA = parseInt(a.resolution);
+         const numB = parseInt(b.resolution);
+         return numB - numA;
+      });
 
-      if (data.status === 'error' || !data.url) {
-          throw new Error(data.text || 'API Error');
+      // Find the best audio-only format
+      const audioFormats = ytdl.filterFormats(formats, 'audioonly');
+      if (audioFormats.length > 0) {
+          videoOptions.push({
+             type: 'audio',
+             resolution: 'Sadece Ses (MP3)',
+             format_id: audioFormats[0].itag,
+             url: audioFormats[0].url,
+             ext: 'mp3'
+          });
       }
 
-      return data.url;
+      setAvailableFormats(videoOptions);
+
     } catch (e) {
-      console.error(e);
-      // Fallback API if the official one is rate-limited or blocks the request
-      return null;
+      console.error("Info Fetch Error", e);
+      Alert.alert('Hata', 'Video bilgileri alınamadı. Link hatalı veya video kısıtlı olabilir.');
+    } finally {
+      setIsFetchingInfo(false);
     }
   };
 
-  const handleOptionSelect = async (option: string) => {
-    setShowOptions(false);
-
+  const handleDownloadFormat = async (formatOption: any) => {
     const hasPermission = await requestPermissions();
     if (!hasPermission) {
       Alert.alert('Hata', 'Dosya kaydetmek için galeri erişim izni gereklidir.');
@@ -70,48 +98,12 @@ export const YouTubeDownloaderScreen = () => {
     setDownloadProgress(0);
 
     try {
-      let isAudio = option === 'audio';
-      let quality = option === '1080' ? '1080' : '720';
-
-      // We will use a reliable public Cobalt instance since the main API might have restrictions or be down
-      const cobaltApiHost = 'https://co.wuk.sh/api/json'; // Note: Public instances might change, but this is a popular alternative
-
-      let downloadUrl = null;
-
-      try {
-        const response = await fetch('https://co.wuk.sh/api/json', {
-          method: 'POST',
-          headers: {
-            'Accept': 'application/json',
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            url: url,
-            isAudioOnly: isAudio,
-            aFormat: isAudio ? "mp3" : "best",
-            vQuality: quality,
-            isNoTTWatermark: true,
-          })
-        });
-        const data = await response.json();
-        if (data.url) downloadUrl = data.url;
-      } catch (e) {
-         console.log("Primary API failed, trying fallback...");
-      }
-
-      // If the above instance fails, fallback to another known instance or just use our placeholder logic for demo purposes
-      if (!downloadUrl) {
-         console.log("Using fallback stream extraction strategy...");
-         // As a robust fallback for the test to succeed, if APIs are down, we simulate the extraction.
-         // In a real prod app, you'd deploy your own Cobalt instance or use yt-dlp backend.
-         downloadUrl = 'https://d23dyxeqlo5psv.cloudfront.net/big_buck_bunny.mp4';
-      }
-
-      const fileExt = isAudio ? 'mp3' : 'mp4';
-      const fileUri = FileSystem.documentDirectory + `youtube_indirilen_${Date.now()}.${fileExt}`;
+      const realDownloadUrl = formatOption.url;
+      const safeTitle = videoTitle.replace(/[^a-zA-Z0-9]/g, '_').substring(0, 30);
+      const fileUri = FileSystem.documentDirectory + `${safeTitle}_${Date.now()}.${formatOption.ext}`;
 
       const downloadResumable = FileSystem.createDownloadResumable(
-        downloadUrl,
+        realDownloadUrl,
         fileUri,
         {},
         (downloadProgress) => {
@@ -125,15 +117,19 @@ export const YouTubeDownloaderScreen = () => {
       if (downloadResult && downloadResult.uri) {
          const asset = await MediaLibrary.createAssetAsync(downloadResult.uri);
          await MediaLibrary.createAlbumAsync('MediaApp İndirilenler', asset, false);
-         Alert.alert('Başarılı', `Dosya başarıyla indirildi ve "İndirilen Dosyalar" bölümüne kaydedildi.`);
+         Alert.alert('Başarılı', `Video/Ses başarıyla indirildi ve "İndirilen Dosyalar" klasörüne eklendi.`);
+
+         // Reset state
          setUrl('');
+         setAvailableFormats([]);
+         setVideoTitle('');
       } else {
          throw new Error("Dosya kaydedilemedi.");
       }
 
     } catch (error) {
        console.error(error);
-       Alert.alert('Hata', 'İndirme işlemi sırasında bir hata oluştu veya API geçici olarak kullanım dışı.');
+       Alert.alert('Hata', 'İndirme işlemi sırasında bir hata oluştu. Lütfen bağlantınızı kontrol edin.');
     } finally {
        setIsDownloading(false);
        setDownloadProgress(0);
@@ -149,55 +145,78 @@ export const YouTubeDownloaderScreen = () => {
         <View style={styles.headerIconContainer}>
              <Ionicons name="logo-youtube" size={80} color="#FF0000" />
              <Text style={[styles.title, { color: colors.text }]}>YouTube İndirici</Text>
+             <Text style={[styles.subtitle, { color: colors.textSecondary }]}>Sınırsız Video ve Ses İndirici</Text>
         </View>
 
         <View style={[styles.inputContainer, { backgroundColor: colors.surface, borderColor: colors.border }]}>
           <Ionicons name="link" size={24} color={colors.icon} style={styles.inputIcon} />
           <TextInput
             style={[styles.input, { color: colors.text }]}
-            placeholder="YouTube Linki Yapıştırın..."
+            placeholder="Örn: https://youtu.be/NXthCwi4YQ8"
             placeholderTextColor={colors.textSecondary}
             value={url}
-            onChangeText={setUrl}
+            onChangeText={(text) => {
+               setUrl(text);
+               if(availableFormats.length > 0) setAvailableFormats([]); // clear options on new url
+            }}
             autoCapitalize="none"
             autoCorrect={false}
           />
         </View>
 
-        <TouchableOpacity
-            style={[styles.downloadButton, { backgroundColor: colors.primary }]}
-            onPress={handleDownload}
-            disabled={isDownloading}
-        >
-            {isDownloading ? (
-               <View style={styles.loadingRow}>
-                 <ActivityIndicator color="#FFF" />
-                 <Text style={styles.progressText}>{Math.round(downloadProgress * 100)}%</Text>
-               </View>
-            ) : (
-               <>
-                 <Ionicons name="download-outline" size={24} color="#FFF" style={{marginRight: 8}} />
-                 <Text style={styles.downloadButtonText}>Kalite Seç ve İndir</Text>
-               </>
-            )}
-        </TouchableOpacity>
+        {!isDownloading && availableFormats.length === 0 && (
+            <TouchableOpacity
+                style={[styles.downloadButton, { backgroundColor: colors.primary }]}
+                onPress={fetchVideoInfo}
+                disabled={isFetchingInfo || url.length < 5}
+            >
+                {isFetchingInfo ? (
+                   <View style={styles.loadingRow}>
+                     <ActivityIndicator color="#FFF" />
+                     <Text style={styles.progressText}>Bilgiler Alınıyor...</Text>
+                   </View>
+                ) : (
+                   <>
+                     <Ionicons name="search" size={24} color="#FFF" style={{marginRight: 8}} />
+                     <Text style={styles.downloadButtonText}>Video Bilgilerini Bul</Text>
+                   </>
+                )}
+            </TouchableOpacity>
+        )}
 
-        {showOptions && !isDownloading && (
+        {isDownloading && (
+           <View style={[styles.downloadingCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+               <ActivityIndicator color={colors.primary} size="large" />
+               <Text style={[styles.progressTextDark, { color: colors.text }]}>İndiriliyor: {Math.round(downloadProgress * 100)}%</Text>
+           </View>
+        )}
+
+        {availableFormats.length > 0 && !isDownloading && (
             <View style={[styles.optionsContainer, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-                <Text style={[styles.optionsTitle, { color: colors.text }]}>İndirme Seçenekleri</Text>
+                <Text style={[styles.optionsTitle, { color: colors.text }]} numberOfLines={2}>
+                    {videoTitle}
+                </Text>
+                <Text style={[styles.optionsSubtitle, { color: colors.textSecondary }]}>İndirmek istediğiniz kaliteyi seçin:</Text>
 
-                <TouchableOpacity style={[styles.optionItem, { borderBottomColor: colors.border }]} onPress={() => handleOptionSelect('1080')}>
-                    <Ionicons name="videocam-outline" size={24} color={colors.text} />
-                    <Text style={[styles.optionText, { color: colors.text }]}>Video (MP4) - En Yüksek Kalite</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={[styles.optionItem, { borderBottomColor: colors.border }]} onPress={() => handleOptionSelect('720')}>
-                    <Ionicons name="videocam-outline" size={24} color={colors.text} />
-                    <Text style={[styles.optionText, { color: colors.text }]}>Video (MP4) - Normal Kalite</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={styles.optionItem} onPress={() => handleOptionSelect('audio')}>
-                    <Ionicons name="musical-notes-outline" size={24} color={colors.text} />
-                    <Text style={[styles.optionText, { color: colors.text }]}>Sadece Ses (MP3)</Text>
-                </TouchableOpacity>
+                {availableFormats.map((option, index) => (
+                    <TouchableOpacity
+                        key={index}
+                        style={[styles.optionItem, { borderBottomColor: colors.border }]}
+                        onPress={() => handleDownloadFormat(option)}
+                    >
+                        <Ionicons
+                           name={option.type === 'video' ? "videocam-outline" : "musical-notes-outline"}
+                           size={24}
+                           color={colors.text}
+                        />
+                        <View style={{marginLeft: 16, flex: 1}}>
+                            <Text style={[styles.optionText, { color: colors.text }]}>
+                                {option.resolution} {option.type === 'video' ? '(Video)' : ''}
+                            </Text>
+                        </View>
+                        <Ionicons name="download-outline" size={24} color={colors.primary} />
+                    </TouchableOpacity>
+                ))}
             </View>
         )}
       </ScrollView>
@@ -222,6 +241,11 @@ const styles = StyleSheet.create({
       fontSize: 24,
       fontWeight: 'bold',
       marginTop: 16,
+  },
+  subtitle: {
+      fontSize: 14,
+      marginTop: 8,
+      textAlign: 'center',
   },
   inputContainer: {
     flexDirection: 'row',
@@ -264,9 +288,23 @@ const styles = StyleSheet.create({
       fontWeight: 'bold',
       fontSize: 16,
   },
+  progressTextDark: {
+      marginTop: 16,
+      fontWeight: 'bold',
+      fontSize: 18,
+  },
+  downloadingCard: {
+      width: '100%',
+      padding: 32,
+      alignItems: 'center',
+      justifyContent: 'center',
+      borderRadius: 12,
+      borderWidth: 1,
+      elevation: 2,
+  },
   optionsContainer: {
       width: '100%',
-      marginTop: 32,
+      marginTop: 16,
       borderRadius: 12,
       borderWidth: 1,
       padding: 16,
@@ -277,8 +315,13 @@ const styles = StyleSheet.create({
       shadowRadius: 4,
   },
   optionsTitle: {
-      fontSize: 18,
+      fontSize: 16,
       fontWeight: 'bold',
+      marginBottom: 8,
+      textAlign: 'center',
+  },
+  optionsSubtitle: {
+      fontSize: 14,
       marginBottom: 16,
       textAlign: 'center',
   },
@@ -290,6 +333,6 @@ const styles = StyleSheet.create({
   },
   optionText: {
       fontSize: 16,
-      marginLeft: 16,
+      fontWeight: '500',
   }
 });

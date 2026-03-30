@@ -11,7 +11,7 @@ export interface Channel {
 // Since reliable streaming URLs for TV and Radio can change frequently,
 // using some well-known public stream URLs for demonstration purposes.
 export const CHANNELS: Channel[] = [
-  // Radio Channels
+  // Radio Channels - Updated with robust Icecast/Shoutcast streams
   {
     id: 'kralpop',
     name: 'Kral Pop Radyo',
@@ -23,21 +23,21 @@ export const CHANNELS: Channel[] = [
     id: 'superfm',
     name: 'Süper FM',
     type: 'radio',
-    streamUrl: 'https://17703.live.streamtheworld.com/SUPER_FM_SC', // Often works for Super FM
+    streamUrl: 'http://17703.live.streamtheworld.com/SUPER_FM_SC', // Reverting to http to avoid SSL cert issues often found on older stream servers
     logoUrl: 'https://upload.wikimedia.org/wikipedia/tr/d/d3/S%C3%BCper_FM_logosu.png',
   },
   {
     id: 'virginradio',
     name: 'Virgin Radio Türkiye',
     type: 'radio',
-    streamUrl: 'https://17733.live.streamtheworld.com/VIRGIN_RADIO_SC',
+    streamUrl: 'http://playerservices.streamtheworld.com/api/livestream-redirect/VIRGIN_RADIO.mp3', // Correct, robust endpoint for Karnaval group
     logoUrl: 'https://upload.wikimedia.org/wikipedia/commons/e/e2/Virgin_Radio_Turkey_logo.png',
   },
   {
     id: 'joyturk',
     name: 'JoyTürk',
     type: 'radio',
-    streamUrl: 'https://17733.live.streamtheworld.com/JOY_TURK_SC',
+    streamUrl: 'http://playerservices.streamtheworld.com/api/livestream-redirect/JOY_TURK.mp3',
     logoUrl: 'https://upload.wikimedia.org/wikipedia/tr/6/6f/JoyTurk_Logosu.png',
   },
   {
