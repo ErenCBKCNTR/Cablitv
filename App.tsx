@@ -6,6 +6,10 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Colors } from './src/constants/colors';
 import { DrawerNavigator } from './src/navigation/DrawerNavigator';
+import { createStackNavigator } from '@react-navigation/stack';
+import { PlayerScreen } from './src/screens/PlayerScreen';
+
+const Stack = createStackNavigator();
 
 export default function App() {
   const [isDarkTheme, setIsDarkTheme] = useState(false);
@@ -60,11 +64,12 @@ export default function App() {
     <SafeAreaProvider>
       <NavigationContainer theme={MyTheme}>
         <StatusBar style={isDarkTheme ? 'light' : 'dark'} />
-        <DrawerNavigator
-          toggleTheme={toggleTheme}
-          isDarkTheme={isDarkTheme}
-          colors={currentColors}
-        />
+        <Stack.Navigator screenOptions={{ headerShown: false }}>
+          <Stack.Screen name="MainDrawer">
+            {(props) => <DrawerNavigator {...props} toggleTheme={toggleTheme} isDarkTheme={isDarkTheme} colors={currentColors} />}
+          </Stack.Screen>
+          <Stack.Screen name="PlayerScreen" component={PlayerScreen} />
+        </Stack.Navigator>
       </NavigationContainer>
     </SafeAreaProvider>
   );

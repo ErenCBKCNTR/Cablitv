@@ -67,7 +67,7 @@ export const HomeScreen = () => {
             <TouchableOpacity
                 key={channel.id}
                 style={[styles.featuredCard, { backgroundColor: colors.surface, borderColor: colors.border }]}
-                onPress={() => navigateTo('Canlı TV')}
+                onPress={() => navigation.navigate('PlayerScreen', { channel })}
             >
                 {channel.logoUrl ? (
                     <Image source={{ uri: channel.logoUrl }} style={styles.featuredLogo} resizeMode="contain" />
@@ -92,7 +92,7 @@ export const HomeScreen = () => {
             <TouchableOpacity
                 key={channel.id}
                 style={[styles.featuredCard, { backgroundColor: colors.surface, borderColor: colors.border }]}
-                onPress={() => navigateTo('Canlı Radyo')}
+                onPress={() => navigation.navigate('PlayerScreen', { channel })}
             >
                 {channel.logoUrl ? (
                     <Image source={{ uri: channel.logoUrl }} style={styles.featuredLogo} resizeMode="contain" />

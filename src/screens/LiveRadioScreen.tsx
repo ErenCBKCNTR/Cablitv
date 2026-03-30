@@ -1,18 +1,16 @@
 import React, { useState, useEffect } from 'react';
-import { View, StyleSheet, FlatList, TextInput, KeyboardAvoidingView, Platform } from 'react-native';
+import { View, StyleSheet, FlatList, TextInput } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useTheme } from '@react-navigation/native';
+import { useTheme, useNavigation } from '@react-navigation/native';
 import { CHANNELS, Channel } from '../constants/channels';
 import { ChannelItem } from '../components/ChannelItem';
-import { MediaPlayer } from '../components/MediaPlayer';
 import { Ionicons } from '@expo/vector-icons';
 
 export const LiveRadioScreen = () => {
   const { colors } = useTheme() as any;
+  const navigation = useNavigation() as any;
   const [searchQuery, setSearchQuery] = useState('');
   const [favorites, setFavorites] = useState<string[]>([]);
-  const [activeChannel, setActiveChannel] = useState<Channel | null>(null);
-
   const radioChannels = CHANNELS.filter((c) => c.type === 'radio');
 
   useEffect(() => {
@@ -77,23 +75,13 @@ export const LiveRadioScreen = () => {
           <ChannelItem
             channel={item}
             isFavorite={favorites.includes(item.id)}
-            onPress={() => setActiveChannel(item)}
+            onPress={() => navigation.navigate('PlayerScreen', { channel: item })}
             onToggleFavorite={() => toggleFavorite(item.id)}
             colors={colors}
           />
         )}
         contentContainerStyle={styles.listContent}
       />
-
-      {activeChannel && (
-        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-           <MediaPlayer
-             channel={activeChannel}
-             onClose={() => setActiveChannel(null)}
-             colors={colors}
-           />
-        </KeyboardAvoidingView>
-      )}
     </View>
   );
 };

@@ -65,10 +65,10 @@ const styles = StyleSheet.create({
   container: {
     width: '30%', // Makes them smaller, fitting 3 in a row
     margin: '1.6%', // Tighter margins
-    borderRadius: 8,
+    borderRadius: 12,
     borderWidth: 1,
     overflow: 'hidden',
-    elevation: 2, // Lighter shadow
+    elevation: 4, // More prominent shadow
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.1,
@@ -79,8 +79,8 @@ const styles = StyleSheet.create({
     flex: 3,
     justifyContent: 'center',
     alignItems: 'center',
-    padding: 8,
-    backgroundColor: 'rgba(0,0,0,0.02)', // slight tint for contrast if logos have transparent bg
+    padding: 12,
+    backgroundColor: 'rgba(0,0,0,0.03)',
   },
   logo: {
     width: '100%',
